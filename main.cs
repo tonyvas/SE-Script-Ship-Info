@@ -14,32 +14,40 @@ public Program(){
 public void Main(string argument, UpdateType updateSource){
     ClearDebug();
 
-    string output = 
-        FormatSpeed() + "\n" +
-        FormatRange() + "\n" +
-        FormatThrusterEfficacy() + "\n" +
-        FormatCarryCapacity() + "\n" +
-        FormatStoppingDistance();
-
-    PrintDebug(output);
+    PrintDebug(FormatSpeed());
+    // PrintDebug(FormatRange());
+    PrintDebug(FormatThrusterEfficacy());
+    // PrintDebug(FormatCarryCapacity());
+    // PrintDebug(FormatStoppingDistance());
 }
 
 string FormatSpeed(){
-    double mps = GetMetersPerSecond();
+    double mps = GetForwardMetersPerSecond();
     double kmph = ConvertMetersPerSecondToKilometersPerHour(mps);
 
-    return String.Format("Speed\n-{0} m/s\n-{1} km/h", RoundTwoDecimals(mps), RoundTwoDecimals(kmph));
+    return String.Format("Forward Speed\n {0} m/s\n {1} km/h", RoundTwoDecimals(mps), RoundTwoDecimals(kmph));
 }
 
 string FormatRange(){
-    GetRuntimeRemainingSeconds();
+    // GetRuntimeRemainingSeconds();
     return "";
 }
 
 string FormatThrusterEfficacy(){
     List<IMyThrust> thrusters = GetThrusters();
+    float ratioSum = 0;
 
-    return thrusters.Count.ToString();
+    for (int i = 0; i < thrusters.Count; i++){
+        float max = thrusters[i].MaxThrust;
+        float eff = thrusters[i].MaxEffectiveThrust;
+
+        float ratio = eff / max;
+        ratioSum += ratio;
+    }
+
+    float avgRatio = ratioSum / thrusters.Count;
+
+    return String.Format("Thruster Efficacy\n {0}%", RoundTwoDecimals(avgRatio * 100));;
 }
 
 string FormatCarryCapacity(){
@@ -111,8 +119,15 @@ List<IMyThrust> GetThrusters(){
     return thrusters;
 }
 
-double GetMetersPerSecond(){
-    return shipController.GetShipSpeed();
+double GetForwardMetersPerSecond(){
+    return GetMetersPerSecondInDirection(Base6Directions.Direction.Forward);
+}
+
+double GetMetersPerSecondInDirection(Base6Directions.Direction direction){
+    var vector3I = shipController.Position + Base6Directions.GetIntVector(shipController.Orientation.TransformDirection(direction));
+    var vector = Vector3D.Normalize(Vector3D.Subtract(shipController.CubeGrid.GridIntegerToWorld(vector3I), shipController.GetPosition()));
+
+	return Vector3D.Dot(shipController.GetShipVelocities().LinearVelocity, vector);
 }
 
 double GetTotalShipMass(){
@@ -122,8 +137,10 @@ double GetTotalShipMass(){
 
 void ClearDebug(){
     shipController.CustomData = "";
+    (shipController as IMyCockpit).GetSurface(0).WriteText(shipController.CustomData);
 }
 
 void PrintDebug(string data){
-    shipController.CustomData = shipController.CustomData + "\n" + data;
+    shipController.CustomData = shipController.CustomData + data + "\n";
+    (shipController as IMyCockpit).GetSurface(0).WriteText(shipController.CustomData);
 }
