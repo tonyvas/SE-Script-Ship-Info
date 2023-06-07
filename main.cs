@@ -12,13 +12,11 @@ public Program(){
 }
 
 public void Main(string argument, UpdateType updateSource){
-    ClearDebug();
+    string left = String.Format("{0}\n\n{1}", FormatSpeed(), FormatStoppingDistance());
+    string right = String.Format("{0}\n\n{1}", FormatThrusterEfficacy(), FormatCarryCapacity());
 
-    PrintDebug(FormatSpeed());
-    // PrintDebug(FormatRange());
-    PrintDebug(FormatThrusterEfficacy());
-    // PrintDebug(FormatCarryCapacity());
-    // PrintDebug(FormatStoppingDistance());
+    PrintCockpitLCD(0, left);
+    PrintCockpitLCD(2, right);
 }
 
 string FormatSpeed(){
@@ -51,11 +49,30 @@ string FormatThrusterEfficacy(){
 }
 
 string FormatCarryCapacity(){
-    return "";
+    double force = GetMaxThrustInDirection(Vector3I.Down);
+    double accel = GetGravity();
+
+    double maxMass = force / accel;
+    double curMass = GetTotalShipMass();
+
+    if (maxMass >= 1000){
+        return String.Format("Carry Capacity\n {0}t ({1}%)", RoundTwoDecimals(maxMass / 1000), RoundTwoDecimals(curMass/maxMass * 100));
+    }
+    else{
+        return String.Format("Carry Capacity\n {0}kg ({1}%)", RoundTwoDecimals(maxMass), RoundTwoDecimals(curMass/maxMass * 100));
+    }
 }
 
 string FormatStoppingDistance(){
-    return "";
+    double force = GetMaxThrustInDirection(Vector3I.Forward);
+    double mass = GetTotalShipMass();
+
+    double velocity = GetForwardMetersPerSecond();
+    double accel = force / mass;
+
+    double distance = -(velocity * velocity) / (2 * -accel);
+
+    return String.Format("Stopping Distance\n {0}m", RoundTwoDecimals(distance));
 }
 
 double RoundTwoDecimals(double value){
@@ -113,6 +130,36 @@ double GetRuntimeRemainingSeconds(){
     return 0;
 }
 
+double GetGravity(){
+    return shipController.GetTotalGravity().Length();
+}
+
+double GetMaxThrustInDirection(Vector3I direction){
+    List<IMyThrust> thrusters = GetThrustersInDirection(direction);
+
+    float sum = 0;
+    for (int i = 0; i < thrusters.Count; i++){
+        sum += thrusters[i].MaxEffectiveThrust;
+    }
+
+    return (double) sum;
+}
+
+List<IMyThrust> GetThrustersInDirection(Vector3I direction){
+    List<IMyThrust> allThrusters = GetThrusters();
+    List<IMyThrust> directionThrusters = new List<IMyThrust>();
+
+    for (int i = 0; i < allThrusters.Count; i++){
+        IMyThrust thruster = allThrusters[i];
+
+        if (thruster.IsWorking && thruster.GridThrustDirection == direction){
+            directionThrusters.Add(thruster);
+        }
+    }
+
+    return directionThrusters;
+}
+
 List<IMyThrust> GetThrusters(){
     List<IMyThrust> thrusters = new List<IMyThrust>();
     GridTerminalSystem.GetBlocksOfType(thrusters);
@@ -123,9 +170,13 @@ double GetForwardMetersPerSecond(){
     return GetMetersPerSecondInDirection(Base6Directions.Direction.Forward);
 }
 
+Vector3I DirectionToVector3I(Base6Directions.Direction direction){
+    return shipController.Position + Base6Directions.GetIntVector(shipController.Orientation.TransformDirection(direction));
+}
+
 double GetMetersPerSecondInDirection(Base6Directions.Direction direction){
-    var vector3I = shipController.Position + Base6Directions.GetIntVector(shipController.Orientation.TransformDirection(direction));
-    var vector = Vector3D.Normalize(Vector3D.Subtract(shipController.CubeGrid.GridIntegerToWorld(vector3I), shipController.GetPosition()));
+    Vector3I vector3I = DirectionToVector3I(direction);
+    Vector3D vector = Vector3D.Normalize(Vector3D.Subtract(shipController.CubeGrid.GridIntegerToWorld(vector3I), shipController.GetPosition()));
 
 	return Vector3D.Dot(shipController.GetShipVelocities().LinearVelocity, vector);
 }
@@ -135,12 +186,14 @@ double GetTotalShipMass(){
     return (double) shipMass.TotalMass;
 }
 
+void PrintCockpitLCD(int index, string data){
+    (shipController as IMyCockpit).GetSurface(index).WriteText(data);
+}
+
 void ClearDebug(){
     shipController.CustomData = "";
-    (shipController as IMyCockpit).GetSurface(0).WriteText(shipController.CustomData);
 }
 
 void PrintDebug(string data){
     shipController.CustomData = shipController.CustomData + data + "\n";
-    (shipController as IMyCockpit).GetSurface(0).WriteText(shipController.CustomData);
 }
